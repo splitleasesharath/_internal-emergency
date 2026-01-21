@@ -1,0 +1,208 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String              @id @default(uuid())
+  email                 String              @unique
+  fullName              String              @map("full_name")
+  phoneNumber           String?             @map("phone_number")
+  role                  UserRole            @default(GUEST)
+  passwordHash          String?             @map("password_hash")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  guestReservations     Reservation[]       @relation("GuestReservations")
+  hostedListings        Listing[]
+  reportedEmergencies   EmergencyReport[]   @relation("ReportedBy")
+  assignedEmergencies   EmergencyReport[]   @relation("AssignedTo")
+
+  @@map("users")
+}
+
+enum UserRole {
+  GUEST
+  HOST
+  STAFF
+  ADMIN
+}
+
+model Listing {
+  id                String              @id @default(uuid())
+  address           String
+  city              String?
+  state             String?
+  zipCode           String?             @map("zip_code")
+  country           String?
+  latitude          Float?
+  longitude         Float?
+  hostId            String              @map("host_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  host              User                @relation(fields: [hostId], references: [id])
+  reservations      Reservation[]
+
+  @@map("listings")
+}
+
+model Reservation {
+  id                String              @id @default(uuid())
+  agreementNumber   String              @unique @map("agreement_number")
+  listingId         String              @map("listing_id")
+  guestId           String              @map("guest_id")
+  checkInDate       DateTime            @map("check_in_date")
+  checkOutDate      DateTime            @map("check_out_date")
+  status            ReservationStatus   @default(CONFIRMED)
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  listing           Listing             @relation(fields: [listingId], references: [id])
+  guest             User                @relation("GuestReservations", fields: [guestId], references: [id])
+  emergencyReports  EmergencyReport[]
+
+  @@map("reservations")
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+model EmergencyReport {
+  id                    String                  @id @default(uuid())
+  reservationId         String                  @map("reservation_id")
+  reportedById          String                  @map("reported_by_id")
+  emergencyType         String                  @map("emergency_type")
+  description           String                  @db.Text
+  photo1Url             String?                 @map("photo1_url")
+  photo2Url             String?                 @map("photo2_url")
+  status                EmergencyStatus         @default(REPORTED)
+  guidanceInstructions  String?                 @map("guidance_instructions") @db.Text
+  assignedToId          String?                 @map("assigned_to_id")
+  assignedAt            DateTime?               @map("assigned_at")
+  resolvedAt            DateTime?               @map("resolved_at")
+  isHidden              Boolean                 @default(false) @map("is_hidden")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+
+  // Relations
+  reservation           Reservation             @relation(fields: [reservationId], references: [id])
+  reportedBy            User                    @relation("ReportedBy", fields: [reportedById], references: [id])
+  assignedTo            User?                   @relation("AssignedTo", fields: [assignedToId], references: [id])
+  messages              Message[]
+  emails                EmailLog[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([assignedToId])
+  @@map("emergency_reports")
+}
+
+enum EmergencyStatus {
+  REPORTED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Message {
+  id                  String              @id @default(uuid())
+  emergencyReportId   String              @map("emergency_report_id")
+  direction           MessageDirection
+  recipientPhone      String              @map("recipient_phone")
+  senderPhone         String              @map("sender_phone")
+  messageBody         String              @map("message_body") @db.Text
+  twilioSid           String?             @map("twilio_sid")
+  status              MessageStatus       @default(PENDING)
+  sentAt              DateTime?           @map("sent_at")
+  deliveredAt         DateTime?           @map("delivered_at")
+  errorMessage        String?             @map("error_message")
+  createdAt           DateTime            @default(now()) @map("created_at")
+
+  // Relations
+  emergencyReport     EmergencyReport     @relation(fields: [emergencyReportId], references: [id])
+
+  @@index([emergencyReportId])
+  @@map("messages")
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model EmailLog {
+  id                  String              @id @default(uuid())
+  emergencyReportId   String              @map("emergency_report_id")
+  recipientEmail      String              @map("recipient_email")
+  ccEmails            String[]            @map("cc_emails")
+  bccEmails           String[]            @map("bcc_emails")
+  subject             String
+  bodyHtml            String              @map("body_html") @db.Text
+  bodyText            String              @map("body_text") @db.Text
+  status              EmailStatus         @default(PENDING)
+  sentAt              DateTime?           @map("sent_at")
+  errorMessage        String?             @map("error_message")
+  createdAt           DateTime            @default(now()) @map("created_at")
+
+  // Relations
+  emergencyReport     EmergencyReport     @relation(fields: [emergencyReportId], references: [id])
+
+  @@index([emergencyReportId])
+  @@map("email_logs")
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model PresetMessage {
+  id          String    @id @default(uuid())
+  label       String
+  content     String    @db.Text
+  category    String
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("preset_messages")
+}
+
+model PresetEmail {
+  id          String    @id @default(uuid())
+  label       String
+  subject     String
+  bodyHtml    String    @map("body_html") @db.Text
+  bodyText    String    @map("body_text") @db.Text
+  category    String
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("preset_emails")
+}
